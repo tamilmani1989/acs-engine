@@ -85,12 +85,18 @@ const publicAgentPoolSuffix = "-public"
 const (
 	// DefaultTillerAddonEnabled determines the acs-engine provided default for enabling tiller addon
 	DefaultTillerAddonEnabled = true
+	// DefaultACIConnectorAddonEnabled determines the acs-engine provided default for enabling aci connector addon
+	DefaultACIConnectorAddonEnabled = false
 	// DefaultDashboardAddonEnabled determines the acs-engine provided default for enabling kubernetes-dashboard addon
 	DefaultDashboardAddonEnabled = true
 	// DefaultReschedulerAddonEnabled determines the acs-engine provided default for enabling kubernetes-rescheduler addon
 	DefaultReschedulerAddonEnabled = false
+	// DefaultRBACEnabled determines the acs-engine provided default for enabling kubernetes RBAC
+	DefaultRBACEnabled = true
 	// DefaultTillerAddonName is the name of the tiller addon deployment
 	DefaultTillerAddonName = "tiller"
+	// DefaultACIConnectorAddonName is the name of the tiller addon deployment
+	DefaultACIConnectorAddonName = "aci-connector"
 	// DefaultDashboardAddonName is the name of the kubernetes-dashboard addon deployment
 	DefaultDashboardAddonName = "kubernetes-dashboard"
 	// DefaultReschedulerAddonName is the name of the rescheduler addon deployment

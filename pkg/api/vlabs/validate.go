@@ -23,7 +23,7 @@ var (
 	etcdValidVersions = [...]string{"2.2.5", "2.3.0", "2.3.1", "2.3.2", "2.3.3", "2.3.4", "2.3.5", "2.3.6", "2.3.7", "2.3.8",
 		"3.0.0", "3.0.1", "3.0.2", "3.0.3", "3.0.4", "3.0.5", "3.0.6", "3.0.7", "3.0.8", "3.0.9", "3.0.10", "3.0.11", "3.0.12", "3.0.13", "3.0.14", "3.0.15", "3.0.16", "3.0.17",
 		"3.1.0", "3.1.1", "3.1.2", "3.1.2", "3.1.3", "3.1.4", "3.1.5", "3.1.6", "3.1.7", "3.1.8", "3.1.9", "3.1.10",
-		"3.2.0", "3.2.1", "3.2.2", "3.2.3", "3.2.4", "3.2.5", "3.2.6", "3.2.7", "3.2.8", "3.2.9"}
+		"3.2.0", "3.2.1", "3.2.2", "3.2.3", "3.2.4", "3.2.5", "3.2.6", "3.2.7", "3.2.8", "3.2.9", "3.2.11"}
 )
 
 const (
@@ -93,8 +93,10 @@ func (o *OrchestratorProfile) Validate(isUpdate bool) error {
 							"1.7.0", o.OrchestratorVersion)
 					}
 
-					if !o.KubernetesConfig.EnableRbac {
-						return fmt.Errorf("enableAggregatedAPIs requires the enableRbac feature as a prerequisite")
+					if o.KubernetesConfig.EnableRbac != nil {
+						if !*o.KubernetesConfig.EnableRbac {
+							return fmt.Errorf("enableAggregatedAPIs requires the enableRbac feature as a prerequisite")
+						}
 					}
 				}
 			}
@@ -207,7 +209,7 @@ func (o *OrchestratorProfile) ValidateForUpgrade() error {
 		return fmt.Errorf("Upgrade is not supported for orchestrator %s", o.OrchestratorType)
 	case Kubernetes:
 		switch o.OrchestratorVersion {
-		case common.KubernetesVersion1Dot6Dot12:
+		case common.KubernetesVersion1Dot6Dot13:
 		case common.KubernetesVersion1Dot7Dot10:
 		default:
 			return fmt.Errorf("Upgrade to Kubernetes version %s is not supported", o.OrchestratorVersion)
@@ -451,6 +453,7 @@ func (a *KubernetesConfig) Validate(k8sVersion string) error {
 		common.KubernetesVersion1Dot8Dot0:  true,
 		common.KubernetesVersion1Dot8Dot1:  true,
 		common.KubernetesVersion1Dot8Dot2:  true,
+		common.KubernetesVersion1Dot8Dot4:  true,
 		common.KubernetesVersion1Dot7Dot0:  true,
 		common.KubernetesVersion1Dot7Dot1:  true,
 		common.KubernetesVersion1Dot7Dot2:  true,
@@ -463,6 +466,7 @@ func (a *KubernetesConfig) Validate(k8sVersion string) error {
 		common.KubernetesVersion1Dot6Dot9:  true,
 		common.KubernetesVersion1Dot6Dot11: true,
 		common.KubernetesVersion1Dot6Dot12: true,
+		common.KubernetesVersion1Dot6Dot13: true,
 	}
 	// k8s versions that have cloudprovider rate limiting enabled (currently identical with backoff enabled versions)
 	ratelimitEnabledVersions := backoffEnabledVersions
@@ -473,9 +477,11 @@ func (a *KubernetesConfig) Validate(k8sVersion string) error {
 			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.ClusterSubnet '%s' is an invalid subnet", a.ClusterSubnet)
 		}
 
-		ones, bits := subnet.Mask.Size()
-		if bits-ones <= 8 {
-			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.ClusterSubnet '%s' must reserve at least 9 bits for nodes", a.ClusterSubnet)
+		if a.NetworkPolicy == "azure" {
+			ones, bits := subnet.Mask.Size()
+			if bits-ones <= 8 {
+				return fmt.Errorf("OrchestratorProfile.KubernetesConfig.ClusterSubnet '%s' must reserve at least 9 bits for nodes", a.ClusterSubnet)
+			}
 		}
 	}
 
@@ -486,25 +492,22 @@ func (a *KubernetesConfig) Validate(k8sVersion string) error {
 		}
 	}
 
-	if a.NonMasqueradeCidr != "" {
-		if _, _, err := net.ParseCIDR(a.NonMasqueradeCidr); err != nil {
-			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.NonMasqueradeCidr '%s' is an invalid CIDR string", a.NonMasqueradeCidr)
-		}
-	}
-
 	if a.MaxPods != 0 {
 		if a.MaxPods < KubernetesMinMaxPods {
 			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.MaxPods '%v' must be at least %v", a.MaxPods, KubernetesMinMaxPods)
 		}
 	}
 
-	if a.NodeStatusUpdateFrequency != "" {
-		_, err := time.ParseDuration(a.NodeStatusUpdateFrequency)
-		if err != nil {
-			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.NodeStatusUpdateFrequency '%s' is not a valid duration", a.NodeStatusUpdateFrequency)
-		}
-		if a.CtrlMgrNodeMonitorGracePeriod == "" {
-			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.NodeStatusUpdateFrequency was set to '%s' but OrchestratorProfile.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod was not set", a.NodeStatusUpdateFrequency)
+	if a.KubeletConfig != nil {
+		if _, ok := a.KubeletConfig["--node-status-update-frequency"]; ok {
+			val := a.KubeletConfig["--node-status-update-frequency"]
+			_, err := time.ParseDuration(val)
+			if err != nil {
+				return fmt.Errorf("--node-status-update-frequency '%s' is not a valid duration", val)
+			}
+			if a.CtrlMgrNodeMonitorGracePeriod == "" {
+				return fmt.Errorf("--node-status-update-frequency was set to '%s' but OrchestratorProfile.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod was not set", val)
+			}
 		}
 	}
 
@@ -513,17 +516,28 @@ func (a *KubernetesConfig) Validate(k8sVersion string) error {
 		if err != nil {
 			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod '%s' is not a valid duration", a.CtrlMgrNodeMonitorGracePeriod)
 		}
-		if a.NodeStatusUpdateFrequency == "" {
-			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod was set to '%s' but OrchestratorProfile.KubernetesConfig.NodeStatusUpdateFrequency was not set", a.NodeStatusUpdateFrequency)
+		if a.KubeletConfig != nil {
+			if _, ok := a.KubeletConfig["--node-status-update-frequency"]; !ok {
+				return fmt.Errorf("OrchestratorProfile.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod was set to '%s' but kubelet config --node-status-update-frequency was not set", a.CtrlMgrNodeMonitorGracePeriod)
+			}
 		}
 	}
 
-	if a.NodeStatusUpdateFrequency != "" && a.CtrlMgrNodeMonitorGracePeriod != "" {
-		nodeStatusUpdateFrequency, _ := time.ParseDuration(a.NodeStatusUpdateFrequency)
-		ctrlMgrNodeMonitorGracePeriod, _ := time.ParseDuration(a.CtrlMgrNodeMonitorGracePeriod)
-		kubeletRetries := ctrlMgrNodeMonitorGracePeriod.Seconds() / nodeStatusUpdateFrequency.Seconds()
-		if kubeletRetries < minKubeletRetries {
-			return fmt.Errorf("acs-engine requires that ctrlMgrNodeMonitorGracePeriod(%f)s be larger than nodeStatusUpdateFrequency(%f)s by at least a factor of %d; ", ctrlMgrNodeMonitorGracePeriod.Seconds(), nodeStatusUpdateFrequency.Seconds(), minKubeletRetries)
+	if a.KubeletConfig != nil {
+		if _, ok := a.KubeletConfig["--node-status-update-frequency"]; ok {
+			if a.CtrlMgrNodeMonitorGracePeriod != "" {
+				nodeStatusUpdateFrequency, _ := time.ParseDuration(a.KubeletConfig["--node-status-update-frequency"])
+				ctrlMgrNodeMonitorGracePeriod, _ := time.ParseDuration(a.CtrlMgrNodeMonitorGracePeriod)
+				kubeletRetries := ctrlMgrNodeMonitorGracePeriod.Seconds() / nodeStatusUpdateFrequency.Seconds()
+				if kubeletRetries < minKubeletRetries {
+					return fmt.Errorf("acs-engine requires that ctrlMgrNodeMonitorGracePeriod(%f)s be larger than nodeStatusUpdateFrequency(%f)s by at least a factor of %d; ", ctrlMgrNodeMonitorGracePeriod.Seconds(), nodeStatusUpdateFrequency.Seconds(), minKubeletRetries)
+				}
+			}
+		}
+		if _, ok := a.KubeletConfig["--non-masquerade-cidr"]; ok {
+			if _, _, err := net.ParseCIDR(a.KubeletConfig["--non-masquerade-cidr"]); err != nil {
+				return fmt.Errorf("--non-masquerade-cidr kubelet config '%s' is an invalid CIDR string", a.KubeletConfig["--non-masquerade-cidr"])
+			}
 		}
 	}
 
@@ -598,6 +612,7 @@ func (a *KubernetesConfig) Validate(k8sVersion string) error {
 		common.KubernetesVersion1Dot8Dot0: true,
 		common.KubernetesVersion1Dot8Dot1: true,
 		common.KubernetesVersion1Dot8Dot2: true,
+		common.KubernetesVersion1Dot8Dot4: true,
 	}
 
 	if a.UseCloudControllerManager != nil && *a.UseCloudControllerManager || a.CustomCcmImage != "" {

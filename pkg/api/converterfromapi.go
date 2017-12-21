@@ -638,6 +638,7 @@ func convertOrchestratorProfileToVLabs(api *OrchestratorProfile, o *vlabs.Orches
 }
 
 func convertDcosConfigToVLabs(api *DcosConfig, vlabs *vlabs.DcosConfig) {
+	vlabs.DcosBootstrapURL = api.DcosBootstrapURL
 	vlabs.DcosWindowsBootstrapURL = api.DcosWindowsBootstrapURL
 }
 
@@ -646,11 +647,9 @@ func convertKubernetesConfigToVLabs(api *KubernetesConfig, vlabs *vlabs.Kubernet
 	vlabs.ClusterSubnet = api.ClusterSubnet
 	vlabs.DNSServiceIP = api.DNSServiceIP
 	vlabs.ServiceCidr = api.ServiceCIDR
-	vlabs.NonMasqueradeCidr = api.NonMasqueradeCidr
 	vlabs.NetworkPolicy = api.NetworkPolicy
 	vlabs.MaxPods = api.MaxPods
 	vlabs.DockerBridgeSubnet = api.DockerBridgeSubnet
-	vlabs.NodeStatusUpdateFrequency = api.NodeStatusUpdateFrequency
 	vlabs.CtrlMgrNodeMonitorGracePeriod = api.CtrlMgrNodeMonitorGracePeriod
 	vlabs.CtrlMgrPodEvictionTimeout = api.CtrlMgrPodEvictionTimeout
 	vlabs.CtrlMgrRouteReconciliationPeriod = api.CtrlMgrRouteReconciliationPeriod
@@ -664,6 +663,7 @@ func convertKubernetesConfigToVLabs(api *KubernetesConfig, vlabs *vlabs.Kubernet
 	vlabs.CloudProviderRateLimitQPS = api.CloudProviderRateLimitQPS
 	vlabs.UseManagedIdentity = api.UseManagedIdentity
 	vlabs.CustomHyperkubeImage = api.CustomHyperkubeImage
+	vlabs.DockerEngineVersion = api.DockerEngineVersion
 	vlabs.CustomCcmImage = api.CustomCcmImage
 	vlabs.UseCloudControllerManager = api.UseCloudControllerManager
 	vlabs.UseInstanceMetadata = api.UseInstanceMetadata
@@ -674,6 +674,14 @@ func convertKubernetesConfigToVLabs(api *KubernetesConfig, vlabs *vlabs.Kubernet
 	vlabs.EtcdVersion = api.EtcdVersion
 	vlabs.EtcdDiskSizeGB = api.EtcdDiskSizeGB
 	convertAddonsToVlabs(api, vlabs)
+	convertKubeletConfigToVlabs(api, vlabs)
+}
+
+func convertKubeletConfigToVlabs(a *KubernetesConfig, v *vlabs.KubernetesConfig) {
+	v.KubeletConfig = map[string]string{}
+	for key, val := range a.KubeletConfig {
+		v.KubeletConfig[key] = val
+	}
 }
 
 func convertAddonsToVlabs(a *KubernetesConfig, v *vlabs.KubernetesConfig) {
@@ -682,6 +690,7 @@ func convertAddonsToVlabs(a *KubernetesConfig, v *vlabs.KubernetesConfig) {
 		v.Addons = append(v.Addons, vlabs.KubernetesAddon{
 			Name:    a.Addons[i].Name,
 			Enabled: a.Addons[i].Enabled,
+			Config:  map[string]string{},
 		})
 		for j := range a.Addons[i].Containers {
 			v.Addons[i].Containers = append(v.Addons[i].Containers, vlabs.KubernetesContainerSpec{
@@ -692,6 +701,12 @@ func convertAddonsToVlabs(a *KubernetesConfig, v *vlabs.KubernetesConfig) {
 				CPULimits:      a.Addons[i].Containers[j].CPULimits,
 				MemoryLimits:   a.Addons[i].Containers[j].MemoryLimits,
 			})
+		}
+
+		if a.Addons[i].Config != nil {
+			for key, val := range a.Addons[i].Config {
+				v.Addons[i].Config[key] = val
+			}
 		}
 	}
 }
@@ -752,6 +767,10 @@ func convertMasterProfileToVLabs(api *MasterProfile, vlabsProfile *vlabs.MasterP
 		vlabsProfile.Extensions = append(vlabsProfile.Extensions, *vlabsExtension)
 	}
 	vlabsProfile.Distro = vlabs.Distro(api.Distro)
+	if api.KubernetesConfig != nil {
+		vlabsProfile.KubernetesConfig = &vlabs.KubernetesConfig{}
+		convertKubernetesConfigToVLabs(api.KubernetesConfig, vlabsProfile.KubernetesConfig)
+	}
 }
 
 func convertKeyVaultSecretsToVlabs(api *KeyVaultSecrets, vlabsSecrets *vlabs.KeyVaultSecrets) {
@@ -844,6 +863,10 @@ func convertAgentPoolProfileToVLabs(api *AgentPoolProfile, p *vlabs.AgentPoolPro
 		p.Extensions = append(p.Extensions, *vlabsExtension)
 	}
 	p.Distro = vlabs.Distro(api.Distro)
+	if api.KubernetesConfig != nil {
+		p.KubernetesConfig = &vlabs.KubernetesConfig{}
+		convertKubernetesConfigToVLabs(api.KubernetesConfig, p.KubernetesConfig)
+	}
 }
 
 func convertDiagnosticsProfileToV20160930(api *DiagnosticsProfile, dp *v20160930.DiagnosticsProfile) {
@@ -955,6 +978,12 @@ func convertCertificateProfileToVLabs(api *CertificateProfile, vlabs *vlabs.Cert
 	vlabs.ClientPrivateKey = api.ClientPrivateKey
 	vlabs.KubeConfigCertificate = api.KubeConfigCertificate
 	vlabs.KubeConfigPrivateKey = api.KubeConfigPrivateKey
+	vlabs.EtcdServerCertificate = api.EtcdServerCertificate
+	vlabs.EtcdServerPrivateKey = api.EtcdServerPrivateKey
+	vlabs.EtcdClientCertificate = api.EtcdClientCertificate
+	vlabs.EtcdClientPrivateKey = api.EtcdClientPrivateKey
+	vlabs.EtcdPeerCertificates = api.EtcdPeerCertificates
+	vlabs.EtcdPeerPrivateKeys = api.EtcdPeerPrivateKeys
 }
 
 func convertAADProfileToVLabs(api *AADProfile, vlabs *vlabs.AADProfile) {

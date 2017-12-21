@@ -3,9 +3,11 @@ package acsengine
 import (
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/Azure/acs-engine/pkg/api"
 	"github.com/Azure/acs-engine/pkg/api/common"
+	"github.com/Azure/acs-engine/pkg/helpers"
 	"github.com/Masterminds/semver"
 )
 
@@ -13,7 +15,7 @@ const (
 	// AzureCniPluginVer specifies version of Azure CNI plugin, which has been mirrored from
 	// https://github.com/Azure/azure-container-networking/releases/download/${AZURE_PLUGIN_VER}/azure-vnet-cni-linux-amd64-${AZURE_PLUGIN_VER}.tgz
 	// to https://acs-mirror.azureedge.net/cni/
-	AzureCniPluginVer = "v0.91"
+	AzureCniPluginVer = "v1.0.0"
 )
 
 var (
@@ -21,6 +23,7 @@ var (
 	DefaultKubernetesSpecConfig = KubernetesSpecConfig{
 		KubernetesImageBase:              "gcrio.azureedge.net/google_containers/",
 		TillerImageBase:                  "gcrio.azureedge.net/kubernetes-helm/",
+		ACIConnectorImageBase:            "microsoft/",
 		EtcdDownloadURLBase:              "https://acs-mirror.azureedge.net/github-coreos",
 		KubeBinariesSASURLBase:           "https://acs-mirror.azureedge.net/wink8s/",
 		WindowsTelemetryGUID:             "fb801154-36b9-41bc-89c2-f4d4f05472b0",
@@ -48,7 +51,7 @@ var (
 		ImageOffer:     "UbuntuServer",
 		ImageSku:       "16.04-LTS",
 		ImagePublisher: "Canonical",
-		ImageVersion:   "16.04.201711072",
+		ImageVersion:   "16.04.201711211",
 	}
 
 	//DefaultRHELOSImageConfig is the RHEL Linux distribution.
@@ -132,10 +135,13 @@ var (
 		KubernetesSpecConfig: KubernetesSpecConfig{
 			KubernetesImageBase:              "crproxy.trafficmanager.net:6000/google_containers/",
 			TillerImageBase:                  "crproxy.trafficmanager.net:6000/kubernetes-helm/",
-			EtcdDownloadURLBase:              "https://acsengine.blob.core.chinacloudapi.cn/github-coreos",
-			CNIPluginsDownloadURL:            "https://acsengine.blob.core.chinacloudapi.cn/cni/cni-plugins-amd64-latest.tgz",
-			VnetCNILinuxPluginsDownloadURL:   "https://acsengine.blob.core.chinacloudapi.cn/cni/azure-vnet-cni-linux-amd64-latest.tgz",
-			VnetCNIWindowsPluginsDownloadURL: "https://acsengine.blob.core.chinacloudapi.cn/cni/azure-vnet-cni-windows-amd64-latest.zip",
+			ACIConnectorImageBase:            DefaultKubernetesSpecConfig.ACIConnectorImageBase,
+			EtcdDownloadURLBase:              DefaultKubernetesSpecConfig.EtcdDownloadURLBase,
+			KubeBinariesSASURLBase:           DefaultKubernetesSpecConfig.KubeBinariesSASURLBase,
+			WindowsTelemetryGUID:             DefaultKubernetesSpecConfig.WindowsTelemetryGUID,
+			CNIPluginsDownloadURL:            DefaultKubernetesSpecConfig.CNIPluginsDownloadURL,
+			VnetCNILinuxPluginsDownloadURL:   DefaultKubernetesSpecConfig.VnetCNILinuxPluginsDownloadURL,
+			VnetCNIWindowsPluginsDownloadURL: DefaultKubernetesSpecConfig.VnetCNIWindowsPluginsDownloadURL,
 		},
 		DCOSSpecConfig: DCOSSpecConfig{
 			DCOS188BootstrapDownloadURL:     fmt.Sprintf(AzureChinaCloudDCOSBootstrapDownloadURL, "5df43052907c021eeb5de145419a3da1898c58a5"),
@@ -165,6 +171,27 @@ var (
 		Containers: []api.KubernetesContainerSpec{
 			{
 				Name:           DefaultTillerAddonName,
+				CPURequests:    "50m",
+				MemoryRequests: "150Mi",
+				CPULimits:      "50m",
+				MemoryLimits:   "150Mi",
+			},
+		},
+	}
+
+	// DefaultACIConnectorAddonsConfig is the default ACI Connector Kubernetes addon Config
+	DefaultACIConnectorAddonsConfig = api.KubernetesAddon{
+		Name:    DefaultACIConnectorAddonName,
+		Enabled: pointerToBool(api.DefaultACIConnectorAddonEnabled),
+		Config: map[string]string{
+			"region":   "westus",
+			"nodeName": "aci-connector",
+			"os":       "Linux",
+			"taint":    "azure.com/aci",
+		},
+		Containers: []api.KubernetesContainerSpec{
+			{
+				Name:           DefaultACIConnectorAddonName,
 				CPURequests:    "50m",
 				MemoryRequests: "150Mi",
 				CPULimits:      "50m",
@@ -250,6 +277,7 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 		if o.KubernetesConfig.Addons == nil {
 			o.KubernetesConfig.Addons = []api.KubernetesAddon{
 				DefaultTillerAddonsConfig,
+				DefaultACIConnectorAddonsConfig,
 				DefaultDashboardAddonsConfig,
 				DefaultReschedulerAddonsConfig,
 			}
@@ -259,6 +287,11 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 			if t < 0 {
 				// Provide default acs-engine config for Tiller
 				o.KubernetesConfig.Addons = append(o.KubernetesConfig.Addons, DefaultTillerAddonsConfig)
+			}
+			a := getAddonsIndexByName(o.KubernetesConfig.Addons, DefaultACIConnectorAddonName)
+			if a < 0 {
+				// Provide default acs-engine config for ACI Connector
+				o.KubernetesConfig.Addons = append(o.KubernetesConfig.Addons, DefaultACIConnectorAddonsConfig)
 			}
 			d := getAddonsIndexByName(o.KubernetesConfig.Addons, DefaultDashboardAddonName)
 			if d < 0 {
@@ -277,11 +310,15 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 		if o.KubernetesConfig.EtcdVersion == "" {
 			o.KubernetesConfig.EtcdVersion = DefaultEtcdVersion
 		}
-		if o.KubernetesConfig.NetworkPolicy == "" {
-			o.KubernetesConfig.NetworkPolicy = DefaultNetworkPolicy
+		if a.HasWindows() {
+			o.KubernetesConfig.NetworkPolicy = DefaultNetworkPolicyWindows
+		} else {
+			if o.KubernetesConfig.NetworkPolicy == "" {
+				o.KubernetesConfig.NetworkPolicy = DefaultNetworkPolicy
+			}
 		}
 		if o.KubernetesConfig.ClusterSubnet == "" {
-			if o.IsVNETIntegrated() {
+			if o.IsAzureCNI() {
 				// When VNET integration is enabled, all masters, agents and pods share the same large subnet.
 				o.KubernetesConfig.ClusterSubnet = DefaultKubernetesSubnet
 			} else {
@@ -289,7 +326,7 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 			}
 		}
 		if o.KubernetesConfig.MaxPods == 0 {
-			if o.IsVNETIntegrated() {
+			if o.IsAzureCNI() {
 				o.KubernetesConfig.MaxPods = DefaultKubernetesMaxPodsVNETIntegrated
 			} else {
 				o.KubernetesConfig.MaxPods = DefaultKubernetesMaxPods
@@ -309,12 +346,6 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 		}
 		if o.KubernetesConfig.ServiceCIDR == "" {
 			o.KubernetesConfig.ServiceCIDR = DefaultKubernetesServiceCIDR
-		}
-		if o.KubernetesConfig.NonMasqueradeCidr == "" {
-			o.KubernetesConfig.NonMasqueradeCidr = DefaultNonMasqueradeCidr
-		}
-		if o.KubernetesConfig.NodeStatusUpdateFrequency == "" {
-			o.KubernetesConfig.NodeStatusUpdateFrequency = KubeConfigs[k8sVersion]["nodestatusfreq"]
 		}
 		if o.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod == "" {
 			o.KubernetesConfig.CtrlMgrNodeMonitorGracePeriod = KubeConfigs[k8sVersion]["nodegraceperiod"]
@@ -353,15 +384,14 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 			}
 		}
 
-		// default etcd version
-		if "" == o.KubernetesConfig.EtcdVersion {
-			o.KubernetesConfig.EtcdVersion = "2.5.2"
-		}
-
 		// For each addon, produce a synthesized config between user-provided and acs-engine defaults
 		t := getAddonsIndexByName(a.OrchestratorProfile.KubernetesConfig.Addons, DefaultTillerAddonName)
 		if a.OrchestratorProfile.KubernetesConfig.Addons[t].IsEnabled(api.DefaultTillerAddonEnabled) {
 			a.OrchestratorProfile.KubernetesConfig.Addons[t] = assignDefaultAddonVals(a.OrchestratorProfile.KubernetesConfig.Addons[t], DefaultTillerAddonsConfig)
+		}
+		c := getAddonsIndexByName(a.OrchestratorProfile.KubernetesConfig.Addons, DefaultACIConnectorAddonName)
+		if a.OrchestratorProfile.KubernetesConfig.Addons[c].IsEnabled(api.DefaultACIConnectorAddonEnabled) {
+			a.OrchestratorProfile.KubernetesConfig.Addons[c] = assignDefaultAddonVals(a.OrchestratorProfile.KubernetesConfig.Addons[c], DefaultACIConnectorAddonsConfig)
 		}
 		d := getAddonsIndexByName(a.OrchestratorProfile.KubernetesConfig.Addons, DefaultDashboardAddonName)
 		if a.OrchestratorProfile.KubernetesConfig.Addons[d].IsEnabled(api.DefaultDashboardAddonEnabled) {
@@ -376,12 +406,110 @@ func setOrchestratorDefaults(cs *api.ContainerService) {
 			a.OrchestratorProfile.KubernetesConfig.EtcdDiskSizeGB = DefaultEtcdDiskSize
 		}
 
+		staticLinuxKubeletConfig := map[string]string{
+			"--address":                         "0.0.0.0",
+			"--allow-privileged":                "true",
+			"--pod-manifest-path":               "/etc/kubernetes/manifests",
+			"--cloud-config":                    "/etc/kubernetes/azure.json",
+			"--cluster-domain":                  "cluster.local",
+			"--cluster-dns":                     DefaultKubernetesDNSServiceIP,
+			"--cgroups-per-qos":                 "false",
+			"--enforce-node-allocatable":        "",
+			"--kubeconfig":                      "/var/lib/kubelet/kubeconfig",
+			"--azure-container-registry-config": "/etc/kubernetes/azure.json",
+		}
+
+		staticWindowsKubeletConfig := make(map[string]string)
+		for key, val := range staticLinuxKubeletConfig {
+			staticWindowsKubeletConfig[key] = val
+		}
+		// Windows kubelet config overrides
+		staticWindowsKubeletConfig["--network-plugin"] = NetworkPluginKubenet
+
+		// Default Kubelet config
+		defaultKubeletConfig := map[string]string{
+			"--network-plugin":               "cni",
+			"--pod-infra-container-image":    cloudSpecConfig.KubernetesSpecConfig.KubernetesImageBase + KubeConfigs[k8sVersion]["pause"],
+			"--max-pods":                     strconv.Itoa(DefaultKubernetesKubeletMaxPods),
+			"--eviction-hard":                DefaultKubernetesHardEvictionThreshold,
+			"--node-status-update-frequency": KubeConfigs[k8sVersion]["nodestatusfreq"],
+			"--image-gc-high-threshold":      strconv.Itoa(DefaultKubernetesGCHighThreshold),
+			"--image-gc-low-threshold":       strconv.Itoa(DefaultKubernetesGCLowThreshold),
+			"--non-masquerade-cidr":          DefaultNonMasqueradeCidr,
+			"--cloud-provider":               "azure",
+		}
+
+		// If no user-configurable kubelet config values exists, use the defaults
+		setMissingKubeletValues(o.KubernetesConfig, defaultKubeletConfig)
+
+		// Override default cloud-provider?
+		if helpers.IsTrueBoolPointer(a.OrchestratorProfile.KubernetesConfig.UseCloudControllerManager) {
+			staticLinuxKubeletConfig["--cloud-provider"] = "external"
+		}
+
+		if a.OrchestratorProfile.KubernetesConfig.EnableRbac == nil {
+			a.OrchestratorProfile.KubernetesConfig.EnableRbac = pointerToBool(api.DefaultRBACEnabled)
+		}
+
+		// Override default --network-plugin?
+		if o.KubernetesConfig.NetworkPolicy == NetworkPolicyNone {
+			o.KubernetesConfig.KubeletConfig["--network-plugin"] = NetworkPluginKubenet
+		}
+
+		// We don't support user-configurable values for the following,
+		// so any of the value assignments below will override user-provided values
+		var overrideKubeletConfig map[string]string
+		if a.HasWindows() {
+			overrideKubeletConfig = staticWindowsKubeletConfig
+		} else {
+			overrideKubeletConfig = staticLinuxKubeletConfig
+		}
+		for key, val := range overrideKubeletConfig {
+			o.KubernetesConfig.KubeletConfig[key] = val
+		}
+
+		// Get rid of values not supported in v1.5 clusters
+		if !isKubernetesVersionGe(o.OrchestratorVersion, "1.6.0") {
+			for _, key := range []string{"--non-masquerade-cidr", "--cgroups-per-qos", "--enforce-node-allocatable"} {
+				delete(o.KubernetesConfig.KubeletConfig, key)
+			}
+		}
+
+		// Master-specific kubelet config changes go here
+		if a.MasterProfile != nil {
+			if a.MasterProfile.KubernetesConfig == nil {
+				a.MasterProfile.KubernetesConfig = &api.KubernetesConfig{}
+			}
+			setMissingKubeletValues(a.MasterProfile.KubernetesConfig, o.KubernetesConfig.KubeletConfig)
+		}
+		// Agent-specific kubelet config changes go here
+		for _, profile := range a.AgentPoolProfiles {
+			if profile.KubernetesConfig == nil {
+				profile.KubernetesConfig = &api.KubernetesConfig{}
+			}
+			setMissingKubeletValues(profile.KubernetesConfig, o.KubernetesConfig.KubeletConfig)
+		}
+
 	} else if o.OrchestratorType == api.DCOS {
 		if o.DcosConfig == nil {
 			o.DcosConfig = &api.DcosConfig{}
 		}
 		if o.DcosConfig.DcosWindowsBootstrapURL == "" {
 			o.DcosConfig.DcosWindowsBootstrapURL = DefaultDCOSSpecConfig.DCOSWindowsBootstrapDownloadURL
+		}
+	}
+}
+
+func setMissingKubeletValues(p *api.KubernetesConfig, d map[string]string) {
+	if p.KubeletConfig == nil {
+		p.KubeletConfig = d
+	} else {
+		for key, val := range d {
+			// If we don't have a user-configurable value for each option
+			if _, ok := p.KubeletConfig[key]; !ok {
+				// then assign the default value
+				p.KubeletConfig[key] = val
+			}
 		}
 	}
 }
@@ -418,7 +546,7 @@ func setMasterNetworkDefaults(a *api.Properties) {
 
 	if !a.MasterProfile.IsCustomVNET() {
 		if a.OrchestratorProfile.OrchestratorType == api.Kubernetes {
-			if a.OrchestratorProfile.IsVNETIntegrated() {
+			if a.OrchestratorProfile.IsAzureCNI() {
 				// When VNET integration is enabled, all masters, agents and pods share the same large subnet.
 				a.MasterProfile.Subnet = a.OrchestratorProfile.KubernetesConfig.ClusterSubnet
 				a.MasterProfile.FirstConsecutiveStaticIP = getFirstConsecutiveStaticIPAddress(a.MasterProfile.Subnet)
@@ -438,7 +566,7 @@ func setMasterNetworkDefaults(a *api.Properties) {
 	// Set the default number of IP addresses allocated for masters.
 	if a.MasterProfile.IPAddressCount == 0 {
 		// Allocate IP addresses for pods if VNET integration is enabled.
-		if a.OrchestratorProfile.IsVNETIntegrated() {
+		if a.OrchestratorProfile.IsAzureCNI() {
 			if a.OrchestratorProfile.OrchestratorType == api.Kubernetes {
 				a.MasterProfile.IPAddressCount += a.OrchestratorProfile.KubernetesConfig.MaxPods
 			}
@@ -482,7 +610,7 @@ func setAgentNetworkDefaults(a *api.Properties) {
 			profile.IPAddressCount = 1
 
 			// Allocate IP addresses for pods if VNET integration is enabled.
-			if a.OrchestratorProfile.IsVNETIntegrated() {
+			if a.OrchestratorProfile.IsAzureCNI() {
 				if a.OrchestratorProfile.OrchestratorType == api.Kubernetes {
 					profile.IPAddressCount += a.OrchestratorProfile.KubernetesConfig.MaxPods
 				}
@@ -507,7 +635,14 @@ func setStorageDefaults(a *api.Properties) {
 }
 
 func setDefaultCerts(a *api.Properties) (bool, error) {
-	if !certGenerationRequired(a) {
+
+	if a.MasterProfile == nil || a.OrchestratorProfile.OrchestratorType != api.Kubernetes {
+		return false, nil
+	}
+
+	provided := certsAlreadyPresent(a.CertificateProfile, a.MasterProfile.Count)
+
+	if areAllTrue(provided) {
 		return false, nil
 	}
 
@@ -535,10 +670,10 @@ func setDefaultCerts(a *api.Properties) (bool, error) {
 
 	// use the specified Certificate Authority pair, or generate a new pair
 	var caPair *PkiKeyCertPair
-	if len(a.CertificateProfile.CaCertificate) != 0 && len(a.CertificateProfile.CaPrivateKey) != 0 {
+	if provided["ca"] {
 		caPair = &PkiKeyCertPair{CertificatePem: a.CertificateProfile.CaCertificate, PrivateKeyPem: a.CertificateProfile.CaPrivateKey}
 	} else {
-		caCertificate, caPrivateKey, err := createCertificate("ca", nil, nil, false, nil, nil, nil)
+		caCertificate, caPrivateKey, err := createCertificate("ca", nil, nil, false, false, nil, nil, nil)
 		if err != nil {
 			return false, err
 		}
@@ -553,55 +688,76 @@ func setDefaultCerts(a *api.Properties) (bool, error) {
 	}
 	ips = append(ips, cidrFirstIP)
 
-	apiServerPair, clientPair, kubeConfigPair, err := CreatePki(masterExtraFQDNs, ips, DefaultKubernetesClusterDomain, caPair)
+	apiServerPair, clientPair, kubeConfigPair, etcdServerPair, etcdClientPair, etcdPeerPairs, err := CreatePki(masterExtraFQDNs, ips, DefaultKubernetesClusterDomain, caPair, a.MasterProfile.Count)
 	if err != nil {
 		return false, err
 	}
 
-	a.CertificateProfile.APIServerCertificate = apiServerPair.CertificatePem
-	a.CertificateProfile.APIServerPrivateKey = apiServerPair.PrivateKeyPem
-	a.CertificateProfile.ClientCertificate = clientPair.CertificatePem
-	a.CertificateProfile.ClientPrivateKey = clientPair.PrivateKeyPem
-	a.CertificateProfile.KubeConfigCertificate = kubeConfigPair.CertificatePem
-	a.CertificateProfile.KubeConfigPrivateKey = kubeConfigPair.PrivateKeyPem
+	// If no Certificate Authority pair or no cert/key pair was provided, use generated cert/key pairs signed by provided Certificate Authority pair
+	if !provided["apiserver"] || !provided["ca"] {
+		a.CertificateProfile.APIServerCertificate = apiServerPair.CertificatePem
+		a.CertificateProfile.APIServerPrivateKey = apiServerPair.PrivateKeyPem
+	}
+	if !provided["client"] || !provided["ca"] {
+		a.CertificateProfile.ClientCertificate = clientPair.CertificatePem
+		a.CertificateProfile.ClientPrivateKey = clientPair.PrivateKeyPem
+	}
+	if !provided["kubeconfig"] || !provided["ca"] {
+		a.CertificateProfile.KubeConfigCertificate = kubeConfigPair.CertificatePem
+		a.CertificateProfile.KubeConfigPrivateKey = kubeConfigPair.PrivateKeyPem
+	}
+	if !provided["etcd"] || !provided["ca"] {
+		a.CertificateProfile.EtcdServerCertificate = etcdServerPair.CertificatePem
+		a.CertificateProfile.EtcdServerPrivateKey = etcdServerPair.PrivateKeyPem
+		a.CertificateProfile.EtcdClientCertificate = etcdClientPair.CertificatePem
+		a.CertificateProfile.EtcdClientPrivateKey = etcdClientPair.PrivateKeyPem
+		a.CertificateProfile.EtcdPeerCertificates = make([]string, a.MasterProfile.Count)
+		a.CertificateProfile.EtcdPeerPrivateKeys = make([]string, a.MasterProfile.Count)
+		for i, v := range etcdPeerPairs {
+			a.CertificateProfile.EtcdPeerCertificates[i] = v.CertificatePem
+			a.CertificateProfile.EtcdPeerPrivateKeys[i] = v.PrivateKeyPem
+		}
+	}
 
 	return true, nil
 }
 
-func certGenerationRequired(a *api.Properties) bool {
-	if certAlreadyPresent(a.CertificateProfile) {
-		return false
-	}
-	if a.MasterProfile == nil {
-		return false
-	}
-
-	switch a.OrchestratorProfile.OrchestratorType {
-	case api.Kubernetes:
-		return true
-	default:
-		return false
-	}
-}
-
-// certAlreadyPresent determines if the passed in CertificateProfile includes certificate data
-// TODO actually verify valid/useable certificate data
-func certAlreadyPresent(c *api.CertificateProfile) bool {
-	if c != nil {
-		switch {
-		case len(c.APIServerCertificate) > 0:
-			return true
-		case len(c.APIServerPrivateKey) > 0:
-			return true
-		case len(c.ClientCertificate) > 0:
-			return true
-		case len(c.ClientPrivateKey) > 0:
-			return true
-		default:
+func areAllTrue(m map[string]bool) bool {
+	for _, v := range m {
+		if !v {
 			return false
 		}
 	}
-	return false
+	return true
+}
+
+// certsAlreadyPresent already present returns a map where each key is a type of cert and each value is true if that cert/key pair is user-provided
+func certsAlreadyPresent(c *api.CertificateProfile, m int) map[string]bool {
+	g := map[string]bool{
+		"ca":         false,
+		"apiserver":  false,
+		"kubeconfig": false,
+		"client":     false,
+		"etcd":       false,
+	}
+	if c != nil {
+		etcdPeer := true
+		if len(c.EtcdPeerCertificates) != m || len(c.EtcdPeerPrivateKeys) != m {
+			etcdPeer = false
+		} else {
+			for i, p := range c.EtcdPeerCertificates {
+				if !(len(p) > 0) || !(len(c.EtcdPeerPrivateKeys[i]) > 0) {
+					etcdPeer = false
+				}
+			}
+		}
+		g["ca"] = len(c.CaCertificate) > 0 && len(c.CaPrivateKey) > 0
+		g["apiserver"] = len(c.APIServerCertificate) > 0 && len(c.APIServerPrivateKey) > 0
+		g["kubeconfig"] = len(c.KubeConfigCertificate) > 0 && len(c.KubeConfigPrivateKey) > 0
+		g["client"] = len(c.ClientCertificate) > 0 && len(c.ClientPrivateKey) > 0
+		g["etcd"] = etcdPeer && len(c.EtcdClientCertificate) > 0 && len(c.EtcdClientPrivateKey) > 0 && len(c.EtcdServerCertificate) > 0 && len(c.EtcdServerPrivateKey) > 0
+	}
+	return g
 }
 
 // getFirstConsecutiveStaticIPAddress returns the first static IP address of the given subnet.
@@ -671,6 +827,14 @@ func assignDefaultAddonVals(addon, defaults api.KubernetesAddon) api.KubernetesA
 			}
 		}
 	}
+	for key, val := range defaults.Config {
+		if addon.Config == nil {
+			addon.Config = make(map[string]string, 0)
+		}
+		if v, ok := addon.Config[key]; !ok || v == "" {
+			addon.Config[key] = val
+		}
+	}
 	return addon
 }
 
@@ -678,4 +842,10 @@ func assignDefaultAddonVals(addon, defaults api.KubernetesAddon) api.KubernetesA
 func pointerToBool(b bool) *bool {
 	p := b
 	return &p
+}
+
+func isKubernetesVersionGe(actualVersion, version string) bool {
+	orchestratorVersion, _ := semver.NewVersion(actualVersion)
+	constraint, _ := semver.NewConstraint(">=" + version)
+	return constraint.Check(orchestratorVersion)
 }

@@ -13,10 +13,16 @@ import (
 	"github.com/Azure/acs-engine/test/e2e/engine"
 	"github.com/Azure/acs-engine/test/e2e/kubernetes/deployment"
 	"github.com/Azure/acs-engine/test/e2e/kubernetes/node"
+	"github.com/Azure/acs-engine/test/e2e/kubernetes/persistentvolumeclaims"
 	"github.com/Azure/acs-engine/test/e2e/kubernetes/pod"
 	"github.com/Azure/acs-engine/test/e2e/kubernetes/service"
+	"github.com/Azure/acs-engine/test/e2e/kubernetes/storageclass"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+)
+
+const (
+	WorkloadDir = "workloads"
 )
 
 var (
@@ -64,61 +70,61 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 		})
 
 		It("should have kube-dns running", func() {
-			running, err := pod.WaitOnReady("kube-dns", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kube-dns", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have kube-dashboard running", func() {
-			running, err := pod.WaitOnReady("kubernetes-dashboard", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kubernetes-dashboard", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have kube-proxy running", func() {
-			running, err := pod.WaitOnReady("kube-proxy", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kube-proxy", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have heapster running", func() {
-			running, err := pod.WaitOnReady("heapster", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("heapster", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have kube-addon-manager running", func() {
-			running, err := pod.WaitOnReady("kube-addon-manager", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kube-addon-manager", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have kube-apiserver running", func() {
-			running, err := pod.WaitOnReady("kube-apiserver", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kube-apiserver", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have kube-controller-manager running", func() {
-			running, err := pod.WaitOnReady("kube-controller-manager", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kube-controller-manager", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have kube-scheduler running", func() {
-			running, err := pod.WaitOnReady("kube-scheduler", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kube-scheduler", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should have tiller running", func() {
-			running, err := pod.WaitOnReady("tiller", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("tiller", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 		})
 
 		It("should be able to access the dashboard from each node", func() {
-			running, err := pod.WaitOnReady("kubernetes-dashboard", "kube-system", 5*time.Second, cfg.Timeout)
+			running, err := pod.WaitOnReady("kubernetes-dashboard", "kube-system", 3, 30*time.Second, cfg.Timeout)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(running).To(Equal(true))
 
@@ -159,7 +165,7 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 				nginxDeploy, err := deployment.CreateLinuxDeploy("library/nginx:latest", deploymentName, "default")
 				Expect(err).NotTo(HaveOccurred())
 
-				running, err := pod.WaitOnReady(deploymentName, "default", 5*time.Second, cfg.Timeout)
+				running, err := pod.WaitOnReady(deploymentName, "default", 3, 30*time.Second, cfg.Timeout)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(running).To(Equal(true))
 
@@ -197,7 +203,7 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 				iisDeploy, err := deployment.CreateWindowsDeploy("microsoft/iis:windowsservercore-1709", deploymentName, "default", 80, -1)
 				Expect(err).NotTo(HaveOccurred())
 
-				running, err := pod.WaitOnReady(deploymentName, "default", 5*time.Second, cfg.Timeout)
+				running, err := pod.WaitOnReady(deploymentName, "default", 3, 30*time.Second, cfg.Timeout)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(running).To(Equal(true))
 
@@ -237,7 +243,7 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 				iisDeploy, err := deployment.CreateWindowsDeploy("microsoft/iis:windowsservercore-1709", deploymentName, "default", 80, hostport)
 				Expect(err).NotTo(HaveOccurred())
 
-				running, err := pod.WaitOnReady(deploymentName, "default", 5*time.Second, cfg.Timeout)
+				running, err := pod.WaitOnReady(deploymentName, "default", 3, 30*time.Second, cfg.Timeout)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(running).To(Equal(true))
 
@@ -257,6 +263,44 @@ var _ = Describe("Azure Container Cluster using the Kubernetes Orchestrator", fu
 
 				err = iisDeploy.Delete()
 				Expect(err).NotTo(HaveOccurred())
+			} else {
+				Skip("No windows agent was provisioned for this Cluster Definition")
+			}
+		})
+
+		It("should be able to attach azure file", func() {
+			if eng.HasWindowsAgents() {
+				if eng.OrchestratorVersion1Dot8AndUp() {
+					storageclassName := "azurefile" // should be the same as in storageclass-azurefile.yaml
+					sc, err := storageclass.CreateStorageClassFromFile(filepath.Join(WorkloadDir, "storageclass-azurefile.yaml"), storageclassName)
+					Expect(err).NotTo(HaveOccurred())
+					ready, err := sc.WaitOnReady(5*time.Second, cfg.Timeout)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ready).To(Equal(true))
+
+					pvcName := "pvc-azurefile" // should be the same as in pvc-azurefile.yaml
+					pvc, err := persistentvolumeclaims.CreatePersistentVolumeClaimsFromFile(filepath.Join(WorkloadDir, "pvc-azurefile.yaml"), pvcName, "default")
+					Expect(err).NotTo(HaveOccurred())
+					ready, err = pvc.WaitOnReady("default", 5*time.Second, cfg.Timeout)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ready).To(Equal(true))
+
+					podName := "iis-azurefile" // should be the same as in iis-azurefile.yaml
+					iisPod, err := pod.CreatePodFromFile(filepath.Join(WorkloadDir, "iis-azurefile.yaml"), podName, "default")
+					Expect(err).NotTo(HaveOccurred())
+					ready, err = iisPod.WaitOnReady(5*time.Second, cfg.Timeout)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ready).To(Equal(true))
+
+					valid, err := iisPod.ValidateAzureFile("mnt\\azure", 10, 10*time.Second)
+					Expect(valid).To(BeTrue())
+					Expect(err).NotTo(HaveOccurred())
+
+					err = iisPod.Delete()
+					Expect(err).NotTo(HaveOccurred())
+				} else {
+					Skip("Kubernetes version needs to be 1.8 and up for Azure File test")
+				}
 			} else {
 				Skip("No windows agent was provisioned for this Cluster Definition")
 			}

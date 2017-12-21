@@ -31,18 +31,22 @@ Here are the valid values for the orchestrator types:
 |Name|Required|Description|
 |---|---|---|
 |kubernetesImageBase|no|This specifies the base URL (everything preceding the actual image filename) of the kubernetes hyperkube image to use for cluster deploymenbt, e.g., `gcrio.azureedge.net/google_containers/`.|
-|networkPolicy|no|Specifies the network policy tool for the cluster. Valid values are:<br>`none` (default), which won't enforce any network policy,<br>`azure` for applying Azure VNET network policy,<br>`calico` for Calico network policy for clusters with Linux agents only.<br>See [network policy examples](../examples/networkpolicy) for more information.|
+|dockerEngineVersion|no|Which version of docker-engine to use in your cluster, e.g.. "17.03.*"|
+|networkPolicy|no|Specifies the network policy tool for the cluster. Valid values are:<br>`"azure"` (default), which provides an Azure native networking experience,<br>`none` for not enforcing any network policy,<br>`calico` for Calico network policy (clusters with Linux agents only).<br>See [network policy examples](../examples/networkpolicy) for more information.|
 |clusterSubnet|no|The IP subnet used for allocating IP addresses for pod network interfaces. The subnet must be in the VNET address space. Default value is 10.244.0.0/16.|
 |dnsServiceIP|no|IP address for kube-dns to listen on. If specified must be in the range of `serviceCidr`.|
 |dockerBridgeSubnet|no|The specific IP and subnet used for allocating IP addresses for the docker bridge network created on the kubernetes master and agents. Default value is 172.17.0.1/16. This value is used to configure the docker daemon using the [--bip flag](https://docs.docker.com/engine/userguide/networking/default_network/custom-docker0).|
 |serviceCidr|no|IP range for Service IPs, Default is "10.0.0.0/16". This range is never routed outside of a node so does not need to lie within clusterSubnet or the VNet.|
-|nonMasqueradeCidr|no|CIDR block to exclude from default source NAT, Default is "10.0.0.0/8".|
-|enableRbac|no|Enable [Kubernetes RBAC](https://kubernetes.io/docs/admin/authorization/rbac/) (boolean - default == false) |
+|enableRbac|no|Enable [Kubernetes RBAC](https://kubernetes.io/docs/admin/authorization/rbac/) (boolean - default == true) |
+|enableAggregatedAPIs|no|Enable [Kubernetes Aggregated APIs](https://kubernetes.io/docs/concepts/api-extension/apiserver-aggregation/).This is required by [Service Catalog](https://github.com/kubernetes-incubator/service-catalog/blob/master/README.md). (boolean - default == false) |
 |maxPods|no|The maximum number of pods per node. The minimum valid value, necessary for running kube-system pods, is 5. Default value is 30 when networkPolicy equals azure, 110 otherwise.|
 |gcHighThreshold|no|Sets the --image-gc-high-threshold value on the kublet configuration. Default is 85. [See kubelet Garbage Collection](https://kubernetes.io/docs/concepts/cluster-administration/kubelet-garbage-collection/) |
 |gcLowThreshold|no|Sets the --image-gc-low-threshold value on the kublet configuration. Default is 80. [See kubelet Garbage Collection](https://kubernetes.io/docs/concepts/cluster-administration/kubelet-garbage-collection/) |
 |useInstanceMetadata|no|Use the Azure cloudprovider instance metadata service for appropriate resource discovery operations. Default is `true`.|
 |addons|no|Configure various Kubernetes addons configuration (currently supported: tiller, kubernetes-dashboard). See `addons` configuration below.|
+|kubeletConfig|no|Configure various runtime configuration for kubelet. See `kubeletConfig` below.|
+
+#### addons
 
 `addons` describes various addons configuration. It is a child property of `kubernetesConfig`. Below is a list of currently available addons:
 
@@ -94,7 +98,7 @@ More usefully, let's add some custom configuration to both of the above addons:
             "containers": [
                 {
                   "name": "tiller",
-                  "image": "myDockerHubUser/tiller:v3.0.0-alpha
+                  "image": "myDockerHubUser/tiller:v3.0.0-alpha",
                   "cpuRequests": "1",
                   "memoryRequests": "1024Mi",
                   "cpuLimits": "1",
@@ -130,6 +134,54 @@ See https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-c
 Additionally above, we specified a custom docker image for tiller, let's say we want to build a cluster and test an alpha version of tiller in it.
 
 Finally, the `addons.enabled` boolean property was omitted above; that's by design. If you specify a `containers` configuration, acs-engine assumes you're enabling the addon. The very first example above demonstrates a simple "enable this addon with default configuration" declaration.
+
+#### kubeletConfig
+
+`kubeletConfig` declares runtime configuration for the kubelet running on all master and agent nodes. It is a generic key/value object, and a child property of `kubernetesConfig`. An example custom kubelet config:
+
+```
+"kubernetesConfig": {
+    "kubeletConfig": {
+        "--eviction-hard": "memory.available<250Mi,nodefs.available<20%,nodefs.inodesFree<10%"
+    }
+}
+```
+
+See [here](https://kubernetes.io/docs/reference/generated/kubelet/) for a reference of supported kubelet options.
+
+Below is a list of kubelet options that acs-engine will configure by default:
+
+|kubelet option|default value|
+|---|---|
+|"--pod-infra-container-image"|"pause-amd64:<version>"|
+|"--max-pods"|"110"|
+|"--eviction-hard"|"memory.available<100Mi,nodefs.available<10%,nodefs.inodesFree<5%"|
+|"--node-status-update-frequency"|"10s"|
+|"--image-gc-high-threshold"|"85"|
+|"--image-gc-low-threshold"|"850"|
+|"--non-masquerade-cidr"|"10.0.0.0/8"|
+
+Below is a list of kubelet options that are *not* currently user-configurable, either because a higher order configuration vector is available that enforces kubelet configuration, or because a static configuration is required to build a functional cluster:
+
+|kubelet option|default value|
+|---|---|
+|"--address"|"0.0.0.0"|
+|"--azure-container-registry-config"|"/etc/kubernetes/azure.json"|
+|"--allow-privileged"|"true"|
+|"--pod-manifest-path"|"/etc/kubernetes/manifests"|
+|"--cluster-domain"|"cluster.local"|
+|"--cloud-config"|"/etc/kubernetes/azure.json"|
+|"--cloud-provider"|"azure"|
+|"--network-plugin"|"cni"|
+|"--node-labels"|(based on Azure node metadata)|
+|"--cgroups-per-qos"|"false"|
+|"--enforce-node-allocatable"|""|
+|"--kubeconfig"|"/var/lib/kubelet/kubeconfig"|
+|"--register-node" (master nodes only)|"true"|
+|"--register-with-taints" (master nodes only)|"node-role.kubernetes.io/master=true:NoSchedule"|
+|"--feature-gates" (agent nodes only)|"Accelerators=true"|
+
+We consider `kubeletConfig` to be a generic convenience that is powerful and comes with no operational guarantees when used! It is a manual tuning feature that enables low-level configuration of a kubernetes cluster.
 
 ### masterProfile
 `masterProfile` describes the settings for master configuration.

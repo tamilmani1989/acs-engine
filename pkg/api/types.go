@@ -91,6 +91,18 @@ type CertificateProfile struct {
 	KubeConfigCertificate string `json:"kubeConfigCertificate,omitempty"`
 	// KubeConfigPrivateKey is the client private key used for kubectl cli and signed by the CA
 	KubeConfigPrivateKey string `json:"kubeConfigPrivateKey,omitempty"`
+	// EtcdServerCertificate is the server certificate for etcd, and signed by the CA
+	EtcdServerCertificate string `json:"etcdServerCertificate,omitempty"`
+	// EtcdServerPrivateKey is the server private key for etcd, and signed by the CA
+	EtcdServerPrivateKey string `json:"etcdServerPrivateKey,omitempty"`
+	// EtcdClientCertificate is etcd client certificate, and signed by the CA
+	EtcdClientCertificate string `json:"etcdClientCertificate,omitempty"`
+	// EtcdClientPrivateKey is the etcd client private key, and signed by the CA
+	EtcdClientPrivateKey string `json:"etcdClientPrivateKey,omitempty"`
+	// EtcdPeerCertificates is list of etcd peer certificates, and signed by the CA
+	EtcdPeerCertificates []string `json:"etcdPeerCertificates,omitempty"`
+	// EtcdPeerPrivateKeys is list of etcd peer private keys, and signed by the CA
+	EtcdPeerPrivateKeys []string `json:"etcdPeerPrivateKeys,omitempty"`
 }
 
 // LinuxProfile represents the linux parameters passed to the cluster
@@ -171,6 +183,7 @@ type KubernetesAddon struct {
 	Name       string                    `json:"name,omitempty"`
 	Enabled    *bool                     `json:"enabled,omitempty"`
 	Containers []KubernetesContainerSpec `json:"containers,omitempty"`
+	Config     map[string]string         `json:"config,omitempty"`
 }
 
 // IsEnabled returns if the addon is explicitly enabled, or the user-provided default if non explicitly enabled
@@ -186,13 +199,11 @@ func (a *KubernetesAddon) IsEnabled(ifNil bool) bool {
 type KubernetesConfig struct {
 	KubernetesImageBase              string            `json:"kubernetesImageBase,omitempty"`
 	ClusterSubnet                    string            `json:"clusterSubnet,omitempty"`
-	NonMasqueradeCidr                string            `json:"nonMasqueradeCidr,omitempty"`
 	NetworkPolicy                    string            `json:"networkPolicy,omitempty"`
 	MaxPods                          int               `json:"maxPods,omitempty"`
 	DockerBridgeSubnet               string            `json:"dockerBridgeSubnet,omitempty"`
 	DNSServiceIP                     string            `json:"dnsServiceIP,omitempty"`
 	ServiceCIDR                      string            `json:"serviceCidr,omitempty"`
-	NodeStatusUpdateFrequency        string            `json:"nodeStatusUpdateFrequency,omitempty"`
 	CtrlMgrNodeMonitorGracePeriod    string            `json:"ctrlMgrNodeMonitorGracePeriod,omitempty"`
 	CtrlMgrPodEvictionTimeout        string            `json:"ctrlMgrPodEvictionTimeout,omitempty"`
 	CtrlMgrRouteReconciliationPeriod string            `json:"ctrlMgrRouteReconciliationPeriod,omitempty"`
@@ -206,40 +217,44 @@ type KubernetesConfig struct {
 	CloudProviderRateLimitBucket     int               `json:"cloudProviderRateLimitBucket,omitempty"`
 	UseManagedIdentity               bool              `json:"useManagedIdentity,omitempty"`
 	CustomHyperkubeImage             string            `json:"customHyperkubeImage,omitempty"`
+	DockerEngineVersion              string            `json:"dockerEngineVersion,omitempty"`
 	CustomCcmImage                   string            `json:"customCcmImage,omitempty"` // Image for cloud-controller-manager
 	UseCloudControllerManager        *bool             `json:"useCloudControllerManager,omitempty"`
 	UseInstanceMetadata              *bool             `json:"useInstanceMetadata,omitempty"`
-	EnableRbac                       bool              `json:"enableRbac,omitempty"`
+	EnableRbac                       *bool             `json:"enableRbac,omitempty"`
 	EnableAggregatedAPIs             bool              `json:"enableAggregatedAPIs,omitempty"`
 	GCHighThreshold                  int               `json:"gchighthreshold,omitempty"`
 	GCLowThreshold                   int               `json:"gclowthreshold,omitempty"`
 	EtcdVersion                      string            `json:"etcdVersion,omitempty"`
 	EtcdDiskSizeGB                   string            `json:"etcdDiskSizeGB,omitempty"`
 	Addons                           []KubernetesAddon `json:"addons,omitempty"`
+	KubeletConfig                    map[string]string `json:"kubeletConfig,omitempty"`
 }
 
 // DcosConfig Configuration for DC/OS
 type DcosConfig struct {
+	DcosBootstrapURL        string `json:"dcosBootstrapURL,omitempty"`
 	DcosWindowsBootstrapURL string `json:"dcosWindowsBootstrapURL,omitempty"`
 }
 
 // MasterProfile represents the definition of the master cluster
 type MasterProfile struct {
-	Count                    int         `json:"count"`
-	DNSPrefix                string      `json:"dnsPrefix"`
-	VMSize                   string      `json:"vmSize"`
-	OSDiskSizeGB             int         `json:"osDiskSizeGB,omitempty"`
-	VnetSubnetID             string      `json:"vnetSubnetID,omitempty"`
-	VnetCidr                 string      `json:"vnetCidr,omitempty"`
-	FirstConsecutiveStaticIP string      `json:"firstConsecutiveStaticIP,omitempty"`
-	Subnet                   string      `json:"subnet"`
-	IPAddressCount           int         `json:"ipAddressCount,omitempty"`
-	StorageProfile           string      `json:"storageProfile,omitempty"`
-	HTTPSourceAddressPrefix  string      `json:"HTTPSourceAddressPrefix,omitempty"`
-	OAuthEnabled             bool        `json:"oauthEnabled"`
-	PreprovisionExtension    *Extension  `json:"preProvisionExtension"`
-	Extensions               []Extension `json:"extensions"`
-	Distro                   Distro      `json:"distro,omitempty"`
+	Count                    int               `json:"count"`
+	DNSPrefix                string            `json:"dnsPrefix"`
+	VMSize                   string            `json:"vmSize"`
+	OSDiskSizeGB             int               `json:"osDiskSizeGB,omitempty"`
+	VnetSubnetID             string            `json:"vnetSubnetID,omitempty"`
+	VnetCidr                 string            `json:"vnetCidr,omitempty"`
+	FirstConsecutiveStaticIP string            `json:"firstConsecutiveStaticIP,omitempty"`
+	Subnet                   string            `json:"subnet"`
+	IPAddressCount           int               `json:"ipAddressCount,omitempty"`
+	StorageProfile           string            `json:"storageProfile,omitempty"`
+	HTTPSourceAddressPrefix  string            `json:"HTTPSourceAddressPrefix,omitempty"`
+	OAuthEnabled             bool              `json:"oauthEnabled"`
+	PreprovisionExtension    *Extension        `json:"preProvisionExtension"`
+	Extensions               []Extension       `json:"extensions"`
+	Distro                   Distro            `json:"distro,omitempty"`
+	KubernetesConfig         *KubernetesConfig `json:"kubernetesConfig,omitempty"`
 
 	// Master LB public endpoint/FQDN with port
 	// The format will be FQDN:2376
@@ -287,6 +302,7 @@ type AgentPoolProfile struct {
 	CustomNodeLabels      map[string]string `json:"customNodeLabels,omitempty"`
 	PreprovisionExtension *Extension        `json:"preProvisionExtension"`
 	Extensions            []Extension       `json:"extensions"`
+	KubernetesConfig      *KubernetesConfig `json:"kubernetesConfig,omitempty"`
 }
 
 // DiagnosticsProfile setting to enable/disable capturing
@@ -560,8 +576,8 @@ func (o *OrchestratorProfile) IsDCOS() bool {
 	return o.OrchestratorType == DCOS
 }
 
-// IsVNETIntegrated returns true if Azure VNET integration is enabled
-func (o *OrchestratorProfile) IsVNETIntegrated() bool {
+// IsAzureCNI returns true if Azure VNET integration is enabled
+func (o *OrchestratorProfile) IsAzureCNI() bool {
 	switch o.OrchestratorType {
 	case Kubernetes:
 		return o.KubernetesConfig.NetworkPolicy == "azure"
@@ -594,6 +610,17 @@ func (k *KubernetesConfig) IsTillerEnabled() bool {
 		}
 	}
 	return tillerAddon.IsEnabled(DefaultTillerAddonEnabled)
+}
+
+// IsACIConnectorEnabled checks if the ACI Connector addon is enabled
+func (k *KubernetesConfig) IsACIConnectorEnabled() bool {
+	var aciConnectorAddon KubernetesAddon
+	for i := range k.Addons {
+		if k.Addons[i].Name == DefaultACIConnectorAddonName {
+			aciConnectorAddon = k.Addons[i]
+		}
+	}
+	return aciConnectorAddon.IsEnabled(DefaultACIConnectorAddonEnabled)
 }
 
 // IsDashboardEnabled checks if the kubernetes-dashboard addon is enabled
