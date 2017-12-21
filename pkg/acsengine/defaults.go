@@ -437,9 +437,6 @@ func setMasterNetworkDefaults(a *api.Properties) {
 
 	// Set the default number of IP addresses allocated for masters.
 	if a.MasterProfile.IPAddressCount == 0 {
-		// Allocate one IP address for the node.
-		a.MasterProfile.IPAddressCount = 1
-
 		// Allocate IP addresses for pods if VNET integration is enabled.
 		if a.OrchestratorProfile.IsVNETIntegrated() {
 			if a.OrchestratorProfile.OrchestratorType == api.Kubernetes {
