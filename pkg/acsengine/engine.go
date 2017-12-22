@@ -668,7 +668,7 @@ func getParameters(cs *api.ContainerService, isClassicMode bool, generatorCode s
 			}
 			if properties.OrchestratorProfile.DcosConfig.DcosBootstrapURL != "" {
 				dcosBootstrapURL = properties.OrchestratorProfile.DcosConfig.DcosBootstrapURL
-		}
+			}
 		}
 
 		addValue(parametersMap, "dcosBootstrapURL", dcosBootstrapURL)
@@ -865,11 +865,6 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 			return buf.String()
 		},
 
-		"IsMasterAgentDiffVnet": func(agentVnetSubnetId string) bool {
-			masterProfile := cs.Properties.MasterProfile
-			return masterProfile.VnetSubnetID != agentVnetSubnetId
-		},
-
 		"GetMasterCount": func() int {
 			masterProfile := cs.Properties.MasterProfile
 			return masterProfile.Count
@@ -890,14 +885,14 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 			}
 
 			ipint += uint32(profile.Count) + uint32(DefaultInternalLbStaticIPOffset) - 1
-			startip := make(net.IP, 4)
-			binary.BigEndian.PutUint32(startip, ipint)
+			startIP := make(net.IP, 4)
+			binary.BigEndian.PutUint32(startIP, ipint)
 
 			totalIpCount := profile.Count * profile.IPAddressCount
 			ipint = 0
 
 			for count := totalIpCount; count > 0; count-- {
-				ipv4 = startip.To4()
+				ipv4 = startIP.To4()
 				if ipv4 != nil {
 					ipint = binary.BigEndian.Uint32(ipv4)
 				} else {
@@ -905,19 +900,18 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 				}
 
 				ipint += 1
-				newip := make(net.IP, 4)
-				binary.BigEndian.PutUint32(newip, ipint)
+				newIP := make(net.IP, 4)
+				binary.BigEndian.PutUint32(newIP, ipint)
 
 				if ips != "" {
-					ips = ips + "," + "\"" + newip.String() + "\""
+					ips = ips + "," + "\"" + newIP.String() + "\""
 				} else {
-					ips = "\"" + newip.String() + "\""
+					ips = "\"" + newIP.String() + "\""
 				}
 
-				startip = newip
+				startIP = newIP
 			}
 
-			fmt.Println("ips", ips)
 			return ips
 		},
 
